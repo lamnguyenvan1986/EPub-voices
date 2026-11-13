@@ -1,0 +1,49 @@
+# Đóng gói giọng offline tiếng Việt của cộng đồng (package.py) cho app LibriAudio.
+# Repo này công khai để app tải giọng mà không cần đăng nhập (repo app EPub là private).
+# - Mobile tải gói từ bản phát hành "tts-voices":
+#   https://github.com/lamnguyenvan1986/EPub-voices/releases/download/tts-voices/<gói>.tar.bz2
+# - Bản web tải model gốc từ nhánh "web" qua raw.githubusercontent.com (có CORS):
+#   https://raw.githubusercontent.com/lamnguyenvan1986/EPub-voices/web/<id>.onnx
+# Nhánh web chỉ giữ một commit, mỗi lần chạy ghi đè (khoảng 1,2 GB), đừng fetch nhánh này.
+name: Offline voices
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.py
+      - .github/workflows/offline_voices.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install onnx
+      - run: python3 package.py build/offline_voices
+      - name: Đưa lên bản phát hành tts-voices
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view tts-voices > /dev/null 2>&1; then
+            gh release create tts-voices --title "Giọng đọc offline tiếng Việt" \
+              --notes "Gói giọng Piper tiếng Việt cho sherpa-onnx, app LibriAudio tải về khi chọn trong Cài đặt > Giọng đọc. Nguồn ghi trong MODEL_CARD của từng gói. Do workflow offline_voices.yml tạo, đừng sửa tay."
+          fi
+          gh release upload tts-voices build/offline_voices/*.tar.bz2 --clobber
+      - name: Đưa model gốc cho bản web lên nhánh web
+        run: |
+          cd build/offline_voices/web
+          git init -q -b web
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          printf 'Model giọng offline cho bản web của LibriAudio (do workflow offline_voices.yml tạo, đừng sửa tay).\n' > README.md
+          git add -A
+          git commit -q -m "Model giọng offline cho bản web"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" web
